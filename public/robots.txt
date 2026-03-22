@@ -1,0 +1,11 @@
+User-agent: *
+Disallow: /api/
+Disallow: /super-admin/
+Disallow: /onboarding/
+Disallow: /reset-password/
+
+Allow: /
+Allow: /login
+Allow: /register
+
+Sitemap: https://app.karmexahr.com/sitemap.xml

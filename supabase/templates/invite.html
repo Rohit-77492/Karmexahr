@@ -1,0 +1,32 @@
+<!-- supabase/templates/invite.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>You're invited to KarmexaHR</title></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px">
+    <tr><td align="center">
+      <table width="580" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+        <tr><td style="background:linear-gradient(135deg,#f0a500,#e08000);padding:28px 32px">
+          <span style="background:rgba(255,255,255,0.2);border-radius:10px;padding:8px 14px;font-weight:900;font-size:16px;color:#fff">Kx</span>
+          <span style="margin-left:12px;color:rgba(255,255,255,0.9);font-weight:600;font-size:14px">KarmexaHR</span>
+        </td></tr>
+        <tr><td style="padding:32px">
+          <h2 style="margin:0 0 8px;font-size:22px;color:#111">You're invited! 🎉</h2>
+          <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 24px">
+            You've been invited to join your company on KarmexaHR — your all-in-one HR platform.
+            Click below to accept the invitation and set up your account.
+          </p>
+          <a href="{{ .ConfirmationURL }}"
+            style="display:inline-block;background:linear-gradient(135deg,#f0a500,#e08000);color:#fff;font-weight:700;font-size:14px;padding:14px 32px;border-radius:12px;text-decoration:none">
+            Accept Invitation →
+          </a>
+          <p style="color:#999;font-size:12px;margin-top:24px">This link expires in 72 hours. If you didn't expect this, you can safely ignore it.</p>
+        </td></tr>
+        <tr><td style="background:#f9f9f9;padding:16px 32px;border-top:1px solid #eee;text-align:center;color:#999;font-size:11px">
+          © 2025 KarmexaHR · Enterprise HRMS
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
