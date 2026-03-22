@@ -1,0 +1,181 @@
+version: '3.8'
+
+# KarmexaHR — Self-Hosted Supabase Stack
+# Based on official Supabase Docker Compose
+# Docs: https://supabase.com/docs/guides/self-hosting/docker
+
+services:
+  # ─── Database ─────────────────────────────────────────────
+  db:
+    image: supabase/postgres:15.1.0.147
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_DB:       postgres
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGPASSWORD:        ${POSTGRES_PASSWORD}
+    volumes:
+      - ./volumes/db/data:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── Auth ─────────────────────────────────────────────────
+  auth:
+    image: supabase/gotrue:v2.151.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST:          0.0.0.0
+      GOTRUE_API_PORT:          9999
+      API_EXTERNAL_URL:         ${API_EXTERNAL_URL}
+      GOTRUE_DB_DRIVER:         postgres
+      GOTRUE_DB_DATABASE_URL:   postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL:          ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST:    ${ADDITIONAL_REDIRECT_URLS}
+      GOTRUE_DISABLE_SIGNUP:    false
+      GOTRUE_JWT_ADMIN_ROLES:   service_role
+      GOTRUE_JWT_AUD:           authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP:           3600
+      GOTRUE_JWT_SECRET:        ${JWT_SECRET}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: true
+      GOTRUE_MAILER_AUTOCONFIRM: false
+      GOTRUE_SMTP_HOST:         ${SMTP_HOST}
+      GOTRUE_SMTP_PORT:         ${SMTP_PORT}
+      GOTRUE_SMTP_USER:         ${SMTP_USER}
+      GOTRUE_SMTP_PASS:         ${SMTP_PASS}
+      GOTRUE_SMTP_SENDER_NAME:  KarmexaHR
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY:     /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_INVITE:       /auth/v1/verify
+      GOTRUE_EXTERNAL_GOOGLE_ENABLED:      ${GOOGLE_ENABLED:-false}
+      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID:    ${GOOGLE_CLIENT_ID:-}
+      GOTRUE_EXTERNAL_GOOGLE_SECRET:       ${GOOGLE_CLIENT_SECRET:-}
+      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${API_EXTERNAL_URL}/auth/v1/callback
+
+  # ─── REST API ─────────────────────────────────────────────
+  rest:
+    image: postgrest/postgrest:v12.0.2
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI:           postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS:       public,storage,graphql_public
+      PGRST_DB_ANON_ROLE:     anon
+      PGRST_JWT_SECRET:       ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: false
+      PGRST_APP_SETTINGS_JWT_SECRET:    ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP:       ${JWT_EXPIRY:-3600}
+
+  # ─── Realtime ─────────────────────────────────────────────
+  realtime:
+    image: supabase/realtime:v2.28.32
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT:              4000
+      DB_HOST:           db
+      DB_PORT:           5432
+      DB_NAME:           postgres
+      DB_USER:           supabase_realtime_admin
+      DB_PASSWORD:       ${POSTGRES_PASSWORD}
+      DB_SSL:            disable
+      JWT_SECRET:        ${JWT_SECRET}
+      REPLICATION_MODE:  RLS
+      REPLICATION_POLL_INTERVAL: 100
+      SECURE_CHANNELS:   true
+      SLOT_NAME:         supabase_realtime_rls
+      TEMPORARY_SLOT:    true
+
+  # ─── Storage ──────────────────────────────────────────────
+  storage:
+    image: supabase/storage-api:v1.0.6
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ANON_KEY:             ${ANON_KEY}
+      SERVICE_KEY:          ${SERVICE_ROLE_KEY}
+      POSTGREST_URL:        http://rest:3000
+      PGRST_JWT_SECRET:     ${JWT_SECRET}
+      DATABASE_URL:         postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      FILE_SIZE_LIMIT:      52428800
+      STORAGE_BACKEND:      file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID:            stub
+      REGION:               stub
+      GLOBAL_S3_BUCKET:     stub
+    volumes:
+      - ./volumes/storage:/var/lib/storage
+
+  # ─── Kong API Gateway ─────────────────────────────────────
+  kong:
+    image: kong:2.8.1
+    restart: unless-stopped
+    depends_on:
+      - rest
+      - auth
+    ports:
+      - '8000:8000/tcp'
+      - '8443:8443/tcp'
+    environment:
+      KONG_DATABASE:          off
+      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_DNS_ORDER:         LAST,A,CNAME
+      KONG_PLUGINS:           request-transformer,cors,key-auth,acl,basic-auth
+      KONG_LOG_LEVEL:         info
+      KONG_NGINX_PROXY_SET:   '$upstream_keepalive_pool_size 32'
+    volumes:
+      - ./volumes/api/kong.yml:/home/kong/kong.yml:ro
+
+  # ─── Studio (Admin UI) ────────────────────────────────────
+  studio:
+    image: supabase/studio:20240101-8e4a94c
+    restart: unless-stopped
+    ports:
+      - '54323:3000'
+    environment:
+      STUDIO_PG_META_URL:       http://meta:8080
+      POSTGRES_PASSWORD:        ${POSTGRES_PASSWORD}
+      DEFAULT_ORGANIZATION_NAME: KarmexaHR
+      DEFAULT_PROJECT_NAME:     karmexahr-prod
+      SUPABASE_URL:             http://kong:8000
+      SUPABASE_ANON_KEY:        ${ANON_KEY}
+      SUPABASE_SERVICE_KEY:     ${SERVICE_ROLE_KEY}
+
+  # ─── KarmexaHR Next.js App ────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_SUPABASE_URL:      http://kong:8000
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY:     ${SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET:           ${JWT_SECRET}
+      NEXT_PUBLIC_APP_URL:           ${SITE_URL}
+      RESEND_API_KEY:                ${RESEND_API_KEY}
+    depends_on:
+      - kong
+      - auth
+      - rest
+
+volumes:
+  db-data:
+  storage-data:
